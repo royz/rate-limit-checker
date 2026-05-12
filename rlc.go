@@ -144,13 +144,21 @@ func main() {
 	var times int
 
 	flag.StringVar(&method, "m", "HEAD", "method")
+	flag.StringVar(&method, "method", "HEAD", "method")
 	flag.IntVar(&threads, "t", 10, "threads")
+	flag.IntVar(&threads, "threads", 10, "threads")
 	flag.IntVar(&times, "c", 1000, "count")
+	flag.IntVar(&times, "count", 1000, "count")
 	flag.BoolVar(&cont, "s", false, "continue after the code changing")
+	flag.BoolVar(&cont, "skip", false, "continue after the code changing")
 	flag.StringVar(&url, "u", "", "url")
+	flag.StringVar(&url, "url", "", "url")
 	flag.BoolVar(&detect, "detect", true, "detect rate limit type and window info")
+	flag.BoolVar(&detect, "d", true, "detect rate limit type and window info")
 	flag.IntVar(&probeInterval, "probe-interval", 1000, "ms between behavioral probe requests (used when headers are absent)")
+	flag.IntVar(&probeInterval, "i", 1000, "ms between behavioral probe requests (used when headers are absent)")
 	flag.IntVar(&probeDuration, "probe-duration", 30, "seconds to probe for recovery after rate limit is hit")
+	flag.IntVar(&probeDuration, "p", 30, "seconds to probe for recovery after rate limit is hit")
 	flag.Parse()
 
 	if url == "" {
@@ -196,13 +204,14 @@ func main() {
 	copy(samples, state.samples)
 	hitAt := state.rateLimitHitAt
 	hitTime := state.rateLimitHitTime
+	firstReqTime := state.firstReqTime
 	state.mu.Unlock()
 
 	windowType, detectionMethod := classifyWindowType(samples)
 
 	if windowType == "Unknown" && !hitTime.IsZero() {
-		printLine("[*] Headers inconclusive — starting behavioral probe (%ds)...", probeDuration)
-		windowType, detectionMethod = behavioralProbe(hitTime)
+		printLine("[*] Headers inconclusive - starting behavioral probe (%ds)...", probeDuration)
+		windowType, detectionMethod = behavioralProbe(hitTime, firstReqTime)
 		fmt.Println()
 	}
 
@@ -255,9 +264,21 @@ func main() {
 // behavioralProbe fires timed requests after a rate limit hit to infer window type.
 // It looks for recovery and then immediately fires a small burst to test if the
 // full window reset (Fixed Window) or only a single token refilled (Rolling Window).
-func behavioralProbe(hitTime time.Time) (string, string) {
+func behavioralProbe(hitTime, firstReqTime time.Time) (string, string) {
 	client := &http.Client{}
-	deadline := hitTime.Add(time.Duration(probeDuration) * time.Second)
+	// Anchor the deadline to whichever is later: hitTime or firstReqTime.
+	// This ensures the probe outlasts the rolling window, which is measured
+	// from when the burst requests were actually made (firstReqTime), not from
+	// when the 429 was first received (hitTime).
+	anchor := hitTime
+	if firstReqTime.After(anchor) {
+		anchor = firstReqTime
+	}
+	deadline := anchor.Add(time.Duration(probeDuration) * time.Second)
+	// Also ensure we probe for at least probeDuration from now.
+	if minDeadline := time.Now().Add(time.Duration(probeDuration) * time.Second); minDeadline.After(deadline) {
+		deadline = minDeadline
+	}
 	interval := time.Duration(probeInterval) * time.Millisecond
 	prevStatus := 429
 
@@ -285,7 +306,7 @@ func behavioralProbe(hitTime time.Time) (string, string) {
 
 		if status == code {
 			recoveryAt := int(time.Since(hitTime).Seconds())
-			printLine("[!] Recovered at %ds — checking burst behavior...", recoveryAt)
+			printLine("[!] Recovered at %ds - checking burst behavior...", recoveryAt)
 
 			// Fire 2 more immediate requests to test if the full window reset.
 			successes := 1
@@ -348,7 +369,7 @@ func request(i int) {
 
 		if statusChanged {
 			printLine("[!] Rate limit hit at request #%d: %d → %d", i, code, resp.StatusCode)
-			if !cont {
+			if !detect && !cont {
 				os.Exit(5)
 			}
 		}
