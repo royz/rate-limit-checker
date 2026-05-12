@@ -51,7 +51,7 @@ All endpoints accept an optional `headers=true` query parameter. When present,
 the response includes standard rate limit headers (`X-RateLimit-Limit`,
 `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-RateLimit-Window`,
 `Retry-After`) that `rlc --detect` consumes automatically. Without it, only
-the HTTP status code (200 / 429) is returned — useful for testing behavioral
+the HTTP status code (200 / 429) is returned - useful for testing behavioral
 detection without header hints.
 
 ## Example: test rolling window (30 s window, 50 req limit)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"math"
 	"net/http"
@@ -375,6 +376,9 @@ func writeJSON(w http.ResponseWriter, msg string) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 func main() {
+	port := flag.String("port", "8080", "port to listen on")
+	flag.Parse()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/rolling-window", rollingWindowHandler)
 	mux.HandleFunc("/fixed-window", fixedWindowHandler)
@@ -382,7 +386,7 @@ func main() {
 	mux.HandleFunc("/leaky-bucket", leakyBucketHandler)
 	mux.HandleFunc("/reset", resetHandler)
 
-	addr := ":8080"
+	addr := ":" + *port
 	fmt.Printf("Rate limit test server on %s\n\n", addr)
 	fmt.Println("Endpoints:")
 	fmt.Println("  GET  /rolling-window?window=30&limit=500   sliding window (window in seconds)")

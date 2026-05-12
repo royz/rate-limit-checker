@@ -317,6 +317,18 @@ func behavioralProbe(hitTime, firstReqTime time.Time) (string, string) {
 				}
 			}
 			if successes == 3 {
+				// When all burst requests share nearly the same timestamp (concurrent
+				// or fast sequential threads), a rolling window's tokens expire all at
+				// once — indistinguishable from a fixed-window hard reset. Measure how
+				// concentrated the burst was relative to the estimated window length; if
+				// it's too tight, the two cannot be told apart behaviourally.
+				windowEst := hitTime.Sub(firstReqTime) + time.Duration(recoveryAt)*time.Second
+				burstDuration := hitTime.Sub(firstReqTime)
+				if windowEst > 0 && burstDuration.Seconds()/windowEst.Seconds() < 0.3 {
+					return "Unknown", fmt.Sprintf(
+						"Behavioral probe: recovery after %ds but burst was concentrated (%dms over ~%ds window) — rolling and fixed windows are indistinguishable; re-run with slower request rate or check headers",
+						recoveryAt, burstDuration.Milliseconds(), int(windowEst.Seconds()))
+				}
 				return "Fixed Window", fmt.Sprintf("Behavioral probe: full burst succeeded after %ds (sharp reset)", recoveryAt)
 			}
 			return "Rolling Window", fmt.Sprintf("Behavioral probe: partial recovery after %ds (trickle refill)", recoveryAt)
